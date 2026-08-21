@@ -1,0 +1,15 @@
+.env
+.user_session
+.bot_session
+.login_qr.svg
+.login_qr.html
+*.session
+*.session-journal
+muted.json
+__pycache__/
+venv/
+.pytest_cache/
+.claude/
+.DS_Store
+.coverage
+htmlcov/

@@ -24,6 +24,7 @@ import urllib.request
 
 XRAY_CONFIG = "/usr/local/etc/xray/config.json"
 SUB_URL_FILE = "/usr/local/etc/xray/subscription.url"   # root-only, 0600
+FALLBACK_NODES_FILE = "/usr/local/etc/xray/fallback-nodes.txt"  # root-only, 0600
 STATE_FILE = "/var/lib/tg-poll-tagbot-watchdog.json"
 BOT_ENV = "/home/yc-user/tg-poll-tagbot/.env"
 SOCKS = "127.0.0.1:10808"
@@ -190,22 +191,40 @@ def tunnel_alive():
 
 
 def fetch_subscription():
-    if not os.path.exists(SUB_URL_FILE):
-        return []
-    with open(SUB_URL_FILE) as fh:
-        url = fh.read().strip()
-    if not url:
-        return []
+    nodes = []
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "Happ/1 (watchdog)"})
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            raw = resp.read().decode("utf-8", "replace")
+        with open(SUB_URL_FILE) as fh:
+            url = fh.read().strip()
+        if url:
+            req = urllib.request.Request(url, headers={"User-Agent": "Happ/1 (watchdog)"})
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                nodes = parse_subscription(resp.read().decode("utf-8", "replace"))
+    except FileNotFoundError:
+        pass
     except Exception as exc:
         log(f"не смог скачать подписку: {exc}")
-        return []
-    nodes = parse_subscription(raw)
-    log(f"в подписке годных нод: {len(nodes)}")
-    return nodes
+
+    # Частная копия рабочих нод на ВМ: без секретов в Git и без зависимости от
+    # доступности URL подписки. Пробуем её также при устаревшей подписке.
+    try:
+        with open(FALLBACK_NODES_FILE) as fh:
+            fallback = parse_subscription(fh.read())
+    except FileNotFoundError:
+        fallback = []
+    except OSError as exc:
+        log(f"не смог прочитать резервные ноды: {exc}")
+        fallback = []
+
+    seen = set()
+    unique = []
+    for node in [*fallback, *nodes]:
+        identity = (node["address"], node["port"], node["uuid"],
+                    node["public_key"], node["short_id"])
+        if identity not in seen:
+            seen.add(identity)
+            unique.append(node)
+    log(f"годных нод: резерв={len(fallback)}, подписка={len(nodes)}, всего={len(unique)}")
+    return unique
 
 
 def apply_node(node):

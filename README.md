@@ -133,8 +133,10 @@ sudo systemctl restart tg-poll-tagbot
 systemd-таймером каждые 5 минут. Что делает:
 
 1. проверяет, ходит ли трафик до Telegram через SOCKS;
-2. если нет — тянет свежий список серверов из ссылки-подписки
-   (`/usr/local/etc/xray/subscription.url`, root-only), перебирает ноды,
+2. если нет — перебирает резервные ноды из
+   `/usr/local/etc/xray/fallback-nodes.txt` (root-only, по одной `vless://`
+   ссылке на строку), затем ноды из ссылки-подписки
+   (`/usr/local/etc/xray/subscription.url`, root-only),
    переключает Xray на первую рабочую и перезапускает бота;
 3. пишет владельцу (`OWNER_ID` в `.env`) в Telegram — **через Bot API напрямую**,
    без тоннеля, поэтому уведомление доходит даже когда VPN лежит. Если рабочих

@@ -2,6 +2,7 @@
 
 import base64
 import importlib.util
+import io
 from pathlib import Path
 
 import pytest
@@ -213,3 +214,35 @@ def test_current_node_address_reads_config(tmp_path):
 
 def test_current_node_address_missing_file(tmp_path):
     assert wd.current_node_address(str(tmp_path / "nope.json")) == "?"
+
+
+def test_fetch_subscription_uses_private_fallback_when_url_missing(tmp_path, monkeypatch):
+    fallback = tmp_path / "fallback-nodes.txt"
+    fallback.write_text(VLESS)
+    monkeypatch.setattr(wd, "SUB_URL_FILE", str(tmp_path / "missing.url"))
+    monkeypatch.setattr(wd, "FALLBACK_NODES_FILE", str(fallback))
+    assert [n["address"] for n in wd.fetch_subscription()] == ["node.example.com"]
+
+
+def test_fetch_subscription_prioritizes_fallback_over_live_nodes(tmp_path, monkeypatch):
+    url = tmp_path / "subscription.url"
+    url.write_text("https://example.com/nodes")
+    fallback = tmp_path / "fallback-nodes.txt"
+    fallback.write_text(VLESS.replace("node.example.com", "backup.example.com"))
+    monkeypatch.setattr(wd, "SUB_URL_FILE", str(url))
+    monkeypatch.setattr(wd, "FALLBACK_NODES_FILE", str(fallback))
+    monkeypatch.setattr(wd.urllib.request, "urlopen", lambda *_args, **_kwargs: io.BytesIO(VLESS.encode()))
+    assert [n["address"] for n in wd.fetch_subscription()] == [
+        "backup.example.com", "node.example.com"
+    ]
+
+
+def test_fetch_subscription_deduplicates_same_node(tmp_path, monkeypatch):
+    url = tmp_path / "subscription.url"
+    url.write_text("https://example.com/nodes")
+    fallback = tmp_path / "fallback-nodes.txt"
+    fallback.write_text(VLESS)
+    monkeypatch.setattr(wd, "SUB_URL_FILE", str(url))
+    monkeypatch.setattr(wd, "FALLBACK_NODES_FILE", str(fallback))
+    monkeypatch.setattr(wd.urllib.request, "urlopen", lambda *_args, **_kwargs: io.BytesIO(VLESS.encode()))
+    assert len(wd.fetch_subscription()) == 1

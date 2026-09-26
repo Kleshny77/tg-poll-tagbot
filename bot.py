@@ -39,6 +39,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 MAX_MSG_CHARS = 3500               # запас под лимит Telegram 4096 (учитывая шапку)
+MAX_MENTIONS_PER_MSG = 15          # не больше 15 push-упоминаний в одном сообщении
 FLOOD_SLEEP_THRESHOLD = 120        # авто-сон Telethon при FloodWait <= N секунд
 MUTED_FILE = os.path.join(BASE_DIR, "muted.json")  # кого не тегать, по чатам
 
@@ -155,15 +156,21 @@ def _split_by_username(users):
     return taggable, nameless
 
 
-def _pack_mentions(mentions, max_chars=MAX_MSG_CHARS):
-    """Упаковать @username-упоминания в минимум сообщений под лимит длины Telegram.
+def _pack_mentions(
+    mentions,
+    max_chars=MAX_MSG_CHARS,
+    max_mentions=MAX_MENTIONS_PER_MSG,
+):
+    """Упаковать @username-упоминания под лимиты длины и количества.
 
     Сущности не считаем: @username сервер размечает сам, они не занимают entity.
     """
+    if max_mentions < 1:
+        raise ValueError("max_mentions must be at least 1")
     batch, chars = [], 0
     for m in mentions:
         add = len(m) + 1  # +пробел
-        if batch and chars + add > max_chars:
+        if batch and (len(batch) >= max_mentions or chars + add > max_chars):
             yield batch
             batch, chars = [], 0
         batch.append(m)
